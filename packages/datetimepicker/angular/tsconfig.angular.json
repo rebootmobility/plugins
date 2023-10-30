@@ -4,7 +4,7 @@
 		"types": ["node"],
 		"baseUrl": ".",
 		"paths": {
-			"@nativescript/datetimepicker": ["../../../dist/packages/datetimepicker"]
+			"@rebootmobility/datetimepicker": ["../../../dist/packages/datetimepicker"]
 		},
 		"outDir": "../../../dist/out-tsc",
 		"declarationDir": "../../../dist/out-tsc"
