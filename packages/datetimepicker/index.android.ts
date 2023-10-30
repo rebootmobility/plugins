@@ -5,6 +5,7 @@ export * from './ui';
 export * from './utils';
 
 let DialogListener: any;
+let DatePickerListener: any;
 let AppCompatNamespace: any;
 declare let global: any;
 
@@ -28,7 +29,7 @@ function initializeDialogListener(): void {
 	@Interfaces([android.content.DialogInterface.OnClickListener, android.content.DialogInterface.OnDismissListener])
 	class DialogListenerImpl extends java.lang.Object implements android.content.DialogInterface.OnClickListener, android.content.DialogInterface.OnDismissListener {
 		private _isClicked = false;
-		constructor(public nativePicker: any, public dateTime: Date, public callback: Function) {
+		constructor(public nativePicker: any, public dateTime: Date, public callback: Function, public minuteInterval?: number) {
 			super();
 			return global.__native(this);
 		}
@@ -48,7 +49,11 @@ function initializeDialogListener(): void {
 					} else if (nativePicker instanceof android.widget.TimePicker) {
 						nativePicker.clearFocus();
 						dateTime.setHours(this.nativePicker.getCurrentHour());
-						dateTime.setMinutes(this.nativePicker.getCurrentMinute());
+						if (this.minuteInterval) {
+							dateTime.setMinutes(this.nativePicker.getCurrentMinute() * this.minuteInterval);
+						} else {
+							dateTime.setMinutes(this.nativePicker.getCurrentMinute());
+						}
 					}
 					callback(dateTime);
 					return;
@@ -71,6 +76,28 @@ function initializeDialogListener(): void {
 	DialogListener = DialogListenerImpl;
 }
 
+function initializeDatePickerListener() {
+	if (DatePickerListener) {
+		return;
+	}
+
+	@NativeClass()
+	@Interfaces([android.app.DatePickerDialog.OnDateSetListener])
+	class DaterPickerListener extends java.lang.Object implements android.app.DatePickerDialog.OnDateSetListener {
+		constructor(public callback: Function) {
+			super();
+
+			return global.__native(this);
+		}
+
+		public onDateSet(param0: globalAndroid.widget.DatePicker, param1: number, param2: number, param3: number): void {
+			this.callback({ param1, param2, param3 });
+		}
+	}
+
+	DatePickerListener = DaterPickerListener;
+}
+
 export class DateTimePickerStyle extends DateTimePickerStyleBase {}
 
 export class DateTimePicker extends DateTimePickerBase {
@@ -87,16 +114,18 @@ export class DateTimePicker extends DateTimePickerBase {
 				let preferredLocale = LocalizationUtils.createNativeLocale(options.locale);
 				java.util.Locale.setDefault(preferredLocale);
 			}
-			const nativeDatePicker = DateTimePicker._createNativeDatePicker(options);
-			const nativeDialogBuilder = DateTimePicker._createNativeDialog(nativeDatePicker, options, options.date, (result: Date) => {
+
+			const nativeDatePicker = DateTimePicker._createNativeDatePicker(options, (result: { param1: number; param2: number; param3: number }) => {
 				if (originalLocale) {
 					java.util.Locale.setDefault(originalLocale);
 				}
-				resolve(result);
+
+				resolve(new Date(new Date().setUTCFullYear(result.param1, result.param2, result.param3)));
 			});
-			// Setting the private nativeDialog to allow dismissing Programmatically
-			DateTimePicker._nativeDialog = DateTimePicker._showNativeDialog(nativeDialogBuilder, nativeDatePicker, style);
+
+			nativeDatePicker.show();
 		});
+
 		return pickDate;
 	}
 
@@ -109,12 +138,18 @@ export class DateTimePicker extends DateTimePickerBase {
 				options.context.getResources().getConfiguration().locale = preferredLocale;
 			}
 			const nativeTimePicker = DateTimePicker._createNativeTimePicker(options);
-			const nativeDialogBuilder = DateTimePicker._createNativeDialog(nativeTimePicker, options, options.time, (result: Date) => {
-				if (originalLocale) {
-					options.context.getResources().getConfiguration().locale = originalLocale;
-				}
-				resolve(result);
-			});
+			const nativeDialogBuilder = DateTimePicker._createNativeDialog(
+				nativeTimePicker,
+				options,
+				options.time,
+				(result: Date) => {
+					if (originalLocale) {
+						options.context.getResources().getConfiguration().locale = originalLocale;
+					}
+					resolve(result);
+				},
+				options.timeInterval
+			);
 			// Setting the private nativeDialog to allow dismissing Programmatically
 			DateTimePicker._nativeDialog = DateTimePicker._showNativeDialog(nativeDialogBuilder, nativeTimePicker, style);
 		});
@@ -127,34 +162,64 @@ export class DateTimePicker extends DateTimePickerBase {
 		}
 	}
 
-	static _createNativeDatePicker(options: DatePickerOptions): android.widget.DatePicker {
+	static _createNativeDatePicker(options: DatePickerOptions, callback: Function): android.app.DatePickerDialog {
 		const date = options.date ? new Date(options.date.getTime()) : getDateToday();
+
 		const context = options.context;
-		let datePicker = new android.widget.DatePicker(context);
-		datePicker.init(date.getFullYear(), date.getMonth(), date.getDate(), null);
-		datePicker.setCalendarViewShown(false);
+
+		initializeDatePickerListener();
+
+		const dialogListener = new DatePickerListener(callback);
+
+		const dialogRes = context.getResources().getIdentifier('dialogTheme', 'style', context.getApplicationInfo().packageName);
+
+		let datePickerDialog = new android.app.DatePickerDialog(context, dialogRes ? dialogRes : android.R.style.Theme_DeviceDefault_Light_Dialog, dialogListener, date.getFullYear(), date.getMonth(), date.getDate());
+
+		let okButtonText = options.okButtonText ? options.okButtonText : this._defaultOkText;
+		let cancelButtonText = options.cancelButtonText ? options.cancelButtonText : this._defaultCancelText;
+
+		datePickerDialog.setButton(android.content.DialogInterface.BUTTON_POSITIVE, okButtonText.toUpperCase(), datePickerDialog);
+		datePickerDialog.setButton(android.content.DialogInterface.BUTTON_NEGATIVE, cancelButtonText.toUpperCase(), datePickerDialog);
+
+		let datePicker = datePickerDialog.getDatePicker();
+
 		if (options.maxDate) {
 			datePicker.setMaxDate(options.maxDate.getTime());
 		}
 		if (options.minDate) {
 			datePicker.setMinDate(options.minDate.getTime());
 		}
-		return datePicker;
+
+		return datePickerDialog;
 	}
 
 	static _createNativeTimePicker(options: TimePickerOptions): android.widget.TimePicker {
 		const time = options.time ? new Date(options.time.getTime()) : getDateNow();
+
 		const context = options.context;
-		let timePicker = new android.widget.TimePicker(context);
+
+		let timePicker: any;
+		if (options.timeInterval) {
+			timePicker = new MinuteIntervalPicker(context, options.timeInterval);
+		} else {
+			timePicker = new android.widget.TimePicker(context);
+		}
+
 		if (options.is24Hours) {
 			timePicker.setIs24HourView(new java.lang.Boolean(options.is24Hours));
 		}
+
 		timePicker.setCurrentHour(new java.lang.Integer(time.getHours()));
-		timePicker.setCurrentMinute(new java.lang.Integer(time.getMinutes()));
+
+		if (options.timeInterval) {
+			timePicker.setCurrentMinute(new java.lang.Integer(time.getMinutes() / options.timeInterval));
+		} else {
+			timePicker.setCurrentMinute(new java.lang.Integer(time.getMinutes()));
+		}
 		return timePicker;
 	}
 
-	static _createNativeDialog(nativePicker: android.view.View, options: PickerOptions, value: Date, callback: Function): android.app.AlertDialog.Builder {
+	static _createNativeDialog(nativePicker: android.view.View, options: PickerOptions, value: Date, callback: Function, minuteInterval?: number): android.app.AlertDialog.Builder {
 		initializeDialogListener();
 		initializeAppCompatNamespace();
 		DateTimePicker._initializeTextResources(options.context);
@@ -171,7 +236,7 @@ export class DateTimePicker extends DateTimePickerBase {
 			dateTime = nativePicker instanceof android.widget.DatePicker ? getDateToday() : getDateNow();
 		}
 		const nativeDialogBuilder = new android.app.AlertDialog.Builder(context);
-		const dialogListener = new DialogListener(nativePicker, dateTime, callback);
+		const dialogListener = new DialogListener(nativePicker, dateTime, callback, minuteInterval);
 		if (options.title) {
 			nativeDialogBuilder.setTitle(options.title);
 		}
@@ -318,5 +383,42 @@ export class DateTimePicker extends DateTimePickerBase {
 		DateTimePicker._defaultOkText = context.getString(okId);
 		DateTimePicker._defaultCancelText = context.getString(cancelId);
 		DateTimePicker._defaultsInitialized = true;
+	}
+}
+
+@NativeClass()
+@Interfaces([android.widget.TimePicker.OnTimeChangedListener])
+class MinuteIntervalPicker extends android.widget.TimePicker {
+	static constructorCalled = false;
+
+	private _minuteInterval: number;
+	private _minuteNumberPicker: android.widget.NumberPicker;
+
+	constructor(context: globalAndroid.content.Context, minuteInterval: number | string) {
+		super(context);
+
+		MinuteIntervalPicker.constructorCalled = true;
+
+		if (typeof minuteInterval === 'string') {
+			this._minuteInterval = parseInt(minuteInterval);
+		} else {
+			this._minuteInterval = minuteInterval;
+		}
+
+		const searchId = context.getResources().getIdentifier('minute', 'id', 'android');
+		this._minuteNumberPicker = this.findViewById(searchId) as android.widget.NumberPicker;
+
+		this._minuteNumberPicker.setMinValue(0);
+		this._minuteNumberPicker.setMaxValue(60 / this._minuteInterval - 1);
+
+		const displayedValues = [];
+
+		for (let i = 0; i < 60; i += this._minuteInterval) {
+			displayedValues.push(i.toString().padStart(2, '0'));
+		}
+
+		this._minuteNumberPicker.setDisplayedValues(displayedValues);
+
+		return global.__native(this);
 	}
 }
