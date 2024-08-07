@@ -124,6 +124,16 @@ export class DateTimePicker extends DateTimePickerBase {
 			});
 
 			nativeDatePicker.show();
+
+			if (style) {
+				if (style.buttonCancelTextColor) {
+					nativeDatePicker.getButton(android.content.DialogInterface.BUTTON_NEGATIVE).setTextColor(style.buttonCancelTextColor.android);
+				}
+
+				if (style.buttonOkTextColor) {
+					nativeDatePicker.getButton(android.content.DialogInterface.BUTTON_POSITIVE).setTextColor(style.buttonOkTextColor.android);
+				}
+			}
 		});
 
 		return pickDate;
