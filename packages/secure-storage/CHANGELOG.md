@@ -1,3 +1,13 @@
+## 4.0.2 (2026-08-04)
+
+### 🩹 Fixes
+
+- **secure-storage:** make the ios simulator NSUserDefaults fallback opt-in ([#670](https://github.com/NativeScript/plugins/pull/670))
+
+### ❤️ Thank You
+
+- Eduardo Speroni @edusperoni
+
 ## 4.0.1 (2025-09-17)
 
 ### 🩹 Fixes
