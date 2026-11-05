@@ -117,7 +117,11 @@ export class DateTimePicker extends DateTimePickerBase {
 		messageLabel.heightAnchor.constraintEqualToConstant(pickerViewHeight).active = true;
 		// Disable clipping on all ancestor views to prevent wheel picker from being cut off
 		DateTimePicker._disableClipsToBoundsOnAncestors(messageLabelContainer);
-		messageLabelContainer.addSubview(pickerContainer);
+		// Add the picker to the alert's root view, not to the (narrower) label container:
+		// UIKit only delivers touches inside the bounds of every ancestor, so any part of
+		// the picker overflowing the label container (month arrows, edge day columns) would
+		// render but never receive taps. The alert view's bounds span the full picker width.
+		alertController.view.addSubview(pickerContainer);
 
 		pickerContainer.translatesAutoresizingMaskIntoConstraints = false;
 		pickerContainer.topAnchor.constraintEqualToAnchor(options.title ? messageLabel.topAnchor : messageLabelContainer.topAnchor).active = true;
